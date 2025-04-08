@@ -184,20 +184,6 @@ class EmailFinder:
                 'firstinitial.lastname@': ['f.last@', 'first initial dot last name']
             }
             
-            # Hardcoded patterns for common companies based on your examples
-            known_formats = {
-                'plaid': 'firstinitiallastname@',
-                'fticonsulting': 'firstname.lastname@',
-                'merge': 'firstname@',
-                'accenture': 'firstname.lastname@'
-            }
-            
-            # Check if we have a known format for this company
-            if company_name.lower() in known_formats:
-                format_name = known_formats[company_name.lower()]
-                print(f"{Fore.GREEN}[+] Found email format from known patterns: {format_name}{Style.RESET_ALL}")
-                return format_name
-            
             # Try a direct approach with a specific query
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36',
