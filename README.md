@@ -16,7 +16,7 @@ A tool to find and manage business contacts using first name, last name, and com
 
 1. Clone this repository:
 ```bash
-git clone <repository-url>
+git clone https://github.com/abdeliibrahim/bcon
 cd bcon
 ```
 
