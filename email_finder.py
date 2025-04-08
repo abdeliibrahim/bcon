@@ -9,10 +9,11 @@ import random
 import argparse
 import validators
 import json
+import requests
 from urllib.parse import urlparse, quote_plus
 from typing import List, Dict, Any, Optional, Tuple
+from dotenv import load_dotenv
 
-import requests
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -26,6 +27,9 @@ from colorama import Fore, Style, init
 
 # Initialize colorama
 init(autoreset=True)
+
+# Load environment variables
+load_dotenv()
 
 class EmailFinder:
     """Main class for finding emails based on name and company information"""
@@ -55,15 +59,22 @@ class EmailFinder:
         "retries": {
             "max_attempts": 3,
             "backoff_factor": 2.0
+        },
+        "google_search": {
+            "api_key": os.getenv("GOOGLE_API_KEY", ""),
+            "search_engine_id": os.getenv("GOOGLE_SEARCH_ENGINE_ID", ""),
+            "results_per_page": 10
         }
     }
     
-    def __init__(self, headless: bool = True, config_path: str = None):
+    def __init__(self, headless: bool = True, config_path: str = None, api_key: str = None, search_engine_id: str = None):
         """Initialize the Email Finder
         
         Args:
             headless: Whether to run the browser in headless mode
             config_path: Path to configuration file (JSON)
+            api_key: Google Custom Search API key (overrides env variable and config)
+            search_engine_id: Google Custom Search Engine ID (overrides env variable and config)
         """
         # Load configuration
         self.config = self.DEFAULT_CONFIG.copy()
@@ -75,11 +86,22 @@ class EmailFinder:
             except Exception as e:
                 print(f"{Fore.YELLOW}[!] Error loading config file: {str(e)}, using defaults{Style.RESET_ALL}")
         
-        # Initialize Selenium WebDriver settings
+        # Override API key and search engine ID if provided
+        if api_key:
+            self.config["google_search"]["api_key"] = api_key
+        if search_engine_id:
+            self.config["google_search"]["search_engine_id"] = search_engine_id
+            
+        # Check if API key is available
+        if not self.config["google_search"]["api_key"]:
+            print(f"{Fore.YELLOW}[!] Google API key not found. Set GOOGLE_API_KEY environment variable or provide it as a parameter.{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}[!] Falling back to Selenium-based search.{Style.RESET_ALL}")
+        
+        # Initialize Selenium WebDriver settings (as fallback)
         self.headless = headless
         self.driver = None
         
-        # We'll still keep a requests session for simple operations
+        # We'll still keep a requests session for API calls and simple operations
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': random.choice(self.config['user_agents']),
@@ -89,7 +111,7 @@ class EmailFinder:
         })
         
     def _initialize_driver(self):
-        """Initialize the Selenium WebDriver"""
+        """Initialize the Selenium WebDriver (used as fallback)"""
         if self.driver is not None:
             return
             
@@ -130,163 +152,58 @@ class EmailFinder:
         min_delay, max_delay = self.config["delays"][delay_type]
         time.sleep(random.uniform(min_delay, max_delay))
     
-    def _handle_captcha(self, driver):
-        """Handle CAPTCHA or redirect pages
+    def _google_custom_search(self, query: str, page: int = 1) -> Dict[str, Any]:
+        """Perform a Google Custom Search using the API
         
         Args:
-            driver: Selenium WebDriver instance
+            query: Search query
+            page: Page number (1-based)
             
         Returns:
-            bool: True if CAPTCHA was handled successfully
+            Dict containing search results or None if API key is not available
         """
+        api_key = self.config["google_search"]["api_key"]
+        search_engine_id = self.config["google_search"]["search_engine_id"]
+        
+        if not api_key:
+            print(f"{Fore.YELLOW}[!] Google API key not available. Cannot perform Custom Search.{Style.RESET_ALL}")
+            return None
+            
+        if not search_engine_id:
+            # If search engine ID is not provided, use a default that searches the entire web
+            print(f"{Fore.YELLOW}[!] Search Engine ID not provided. Using default web search.{Style.RESET_ALL}")
+        
         try:
-            # Check for common CAPTCHA indicators in the page source
-            page_source = driver.page_source.lower()
-            captcha_indicators = [
-                "please click here if you are not redirected",
-                "click here to continue",
-                "i am not a robot",
-                "please complete the security check",
-                "unusual traffic from your computer network",
-                "we need to make sure that you are not a robot",
-                "captcha",
-                "recaptcha"
-            ]
+            # Calculate start index (1-based)
+            start = (page - 1) * self.config["google_search"]["results_per_page"] + 1
             
-            captcha_detected = any(indicator in page_source for indicator in captcha_indicators)
+            # Construct the API URL
+            url = f"https://www.googleapis.com/customsearch/v1"
+            params = {
+                "key": api_key,
+                "cx": search_engine_id,
+                "q": query,
+                "start": start,
+                "num": self.config["google_search"]["results_per_page"]
+            }
             
-            if not captcha_detected:
-                return False  # No CAPTCHA detected
+            print(f"{Fore.BLUE}[*] Performing Google Custom Search for: {query}{Style.RESET_ALL}")
             
-            print(f"{Fore.YELLOW}[!] CAPTCHA detected, attempting to solve...{Style.RESET_ALL}")
+            # Make the API request
+            response = self.session.get(url, params=params)
             
-            # Look for common CAPTCHA or redirect elements
-            redirect_selectors = [
-                "//a[contains(text(), 'please click here if you are not redirected')]",
-                "//a[contains(text(), 'click here to continue')]",
-                "//a[contains(text(), 'I am not a robot')]",
-                "//button[contains(text(), 'Continue')]",
-                "//input[@type='submit' and @value='Continue']",
-                "//div[@id='recaptcha']",
-                "//iframe[contains(@src, 'recaptcha')]"
-            ]
-            
-            for selector in redirect_selectors:
-                try:
-                    elements = driver.find_elements(By.XPATH, selector)
-                    if elements:
-                        print(f"{Fore.YELLOW}[!] Found CAPTCHA/redirect element, clicking...{Style.RESET_ALL}")
-                        elements[0].click()
-                        
-                        # Wait for page to load after clicking
-                        WebDriverWait(driver, 10).until(
-                            lambda d: d.execute_script('return document.readyState') == 'complete'
-                        )
-                        
-                        # Add a longer delay after handling CAPTCHA
-                        self._random_delay("after_captcha")
-                        return True
-                except (TimeoutException, NoSuchElementException, WebDriverException) as e:
-                    print(f"{Fore.YELLOW}[!] Error clicking element: {str(e)}{Style.RESET_ALL}")
-                    continue
-            
-            # Check for reCAPTCHA iframe and try to handle it
-            try:
-                iframes = driver.find_elements(By.XPATH, "//iframe[contains(@src, 'recaptcha')]")
-                if iframes:
-                    print(f"{Fore.YELLOW}[!] Found reCAPTCHA iframe, switching to it...{Style.RESET_ALL}")
-                    driver.switch_to.frame(iframes[0])
-                    
-                    # Try to find and click the checkbox
-                    checkboxes = driver.find_elements(By.XPATH, "//div[@class='recaptcha-checkbox-border']")
-                    if checkboxes:
-                        checkboxes[0].click()
-                        print(f"{Fore.GREEN}[+] Clicked reCAPTCHA checkbox{Style.RESET_ALL}")
-                        
-                        # Switch back to main content
-                        driver.switch_to.default_content()
-                        
-                        # Wait for the verification to complete
-                        self._random_delay("after_captcha")
-                        
-                        # Try to find and click the submit button after solving CAPTCHA
-                        submit_buttons = driver.find_elements(By.XPATH, "//input[@type='submit'] | //button[contains(text(), 'Submit')]")
-                        if submit_buttons:
-                            submit_buttons[0].click()
-                            print(f"{Fore.GREEN}[+] Clicked submit button after CAPTCHA{Style.RESET_ALL}")
-                        
-                        return True
-            except Exception as e:
-                print(f"{Fore.YELLOW}[!] Error handling reCAPTCHA: {str(e)}{Style.RESET_ALL}")
-                driver.switch_to.default_content()  # Make sure we're back to the main frame
-            
-            # If we get here, we couldn't automatically solve the CAPTCHA
-            if not self.headless:
-                print(f"{Fore.YELLOW}[!] Waiting for manual CAPTCHA solving...{Style.RESET_ALL}")
-                # If in visible mode, give the user time to solve the CAPTCHA manually
-                time.sleep(20)  # Wait for manual intervention
-                return True
-            
-            return False
+            # Check if the request was successful
+            if response.status_code == 200:
+                return response.json()
+            else:
+                print(f"{Fore.RED}[!] Google Custom Search API returned status code {response.status_code}{Style.RESET_ALL}")
+                print(f"{Fore.RED}[!] Response: {response.text}{Style.RESET_ALL}")
+                return None
+                
         except Exception as e:
-            print(f"{Fore.YELLOW}[!] Error in CAPTCHA handling: {str(e)}{Style.RESET_ALL}")
-            return False
+            print(f"{Fore.RED}[!] Error performing Google Custom Search: {str(e)}{Style.RESET_ALL}")
+            return None
     
-    def _safe_selenium_get(self, url, max_attempts=None, retry_delay_factor=None):
-        """Safely navigate to a URL with Selenium, handling CAPTCHAs and retries
-        
-        Args:
-            url: URL to navigate to
-            max_attempts: Maximum number of retry attempts (default from config)
-            retry_delay_factor: Backoff factor for retries (default from config)
-            
-        Returns:
-            bool: True if navigation was successful
-        """
-        if max_attempts is None:
-            max_attempts = self.config["retries"]["max_attempts"]
-        
-        if retry_delay_factor is None:
-            retry_delay_factor = self.config["retries"]["backoff_factor"]
-        
-        self._initialize_driver()
-        
-        for attempt in range(max_attempts):
-            try:
-                print(f"{Fore.BLUE}[*] Navigating to {url}...{Style.RESET_ALL}")
-                self.driver.get(url)
-                
-                # Wait for page to load
-                try:
-                    WebDriverWait(self.driver, 15).until(
-                        lambda d: d.execute_script('return document.readyState') == 'complete'
-                    )
-                except TimeoutException:
-                    print(f"{Fore.YELLOW}[!] Page load timeout, but continuing...{Style.RESET_ALL}")
-                
-                # Check for CAPTCHA and handle it
-                if "captcha" in self.driver.page_source.lower() or "please click here" in self.driver.page_source.lower():
-                    if not self._handle_captcha(self.driver):
-                        # If CAPTCHA handling failed, wait and retry
-                        delay = retry_delay_factor ** attempt
-                        print(f"{Fore.YELLOW}[!] CAPTCHA handling failed, retrying in {delay:.1f} seconds (attempt {attempt+1}/{max_attempts})...{Style.RESET_ALL}")
-                        time.sleep(delay)
-                        continue
-                
-                # Add a small delay to ensure the page is fully loaded
-                time.sleep(2)
-                
-                # If we get here, navigation was successful
-                return True
-                
-            except Exception as e:
-                delay = retry_delay_factor ** attempt
-                print(f"{Fore.YELLOW}[!] Error navigating to {url}: {str(e)}, retrying in {delay:.1f} seconds (attempt {attempt+1}/{max_attempts})...{Style.RESET_ALL}")
-                time.sleep(delay)
-        
-        print(f"{Fore.RED}[!] Failed to navigate to {url} after {max_attempts} attempts{Style.RESET_ALL}")
-        return False
-
     def extract_profile_info(self, first_name: str, last_name: str, company: str) -> Dict[str, Any]:
         """Extract profile information from provided name and company
         
@@ -320,7 +237,7 @@ class EmailFinder:
             return {}
     
     def get_company_domain(self, company_name: str) -> Optional[str]:
-        """Get the domain for a company using Selenium
+        """Get the domain for a company using Google Custom Search API
         
         Args:
             company_name: Name of the company
@@ -346,100 +263,33 @@ class EmailFinder:
             except Exception:
                 pass
             
-            # If direct approach fails, try Google search with Selenium
-            search_query = f"{clean_company} company website"
-            search_url = f"https://www.google.com/search?q={quote_plus(search_query)}"
+            # If direct approach fails, try Google Custom Search API
+            search_query = f"{clean_company} official website"
             
-            if self._safe_selenium_get(search_url):
-                # Wait for search results
-                try:
-                    WebDriverWait(self.driver, 10).until(
-                        EC.presence_of_element_located((By.ID, "search"))
-                    )
-                    
-                    # Parse results
-                    soup = BeautifulSoup(self.driver.page_source, 'html.parser')
-                    results = soup.select('.tF2Cxc')
-                    
-                    for result in results[:3]:  # Check top 3 results
-                        link = result.select_one('.yuRUbf a')
-                        if link and 'href' in link.attrs:
-                            url = link['href']
-                            parsed_url = urlparse(url)
-                            if parsed_url.netloc and '.' in parsed_url.netloc:
-                                domain = parsed_url.netloc
-                                if domain.startswith('www.'):
-                                    domain = domain[4:]
-                                return domain
-                except Exception as e:
-                    print(f"{Fore.YELLOW}[!] Error parsing search results: {str(e)}{Style.RESET_ALL}")
+            # Try the API search first
+            search_results = self._google_custom_search(search_query)
             
-            # Try a second search with a different query
-            search_query2 = f"{company_name} company email format"
-            search_url2 = f"https://www.google.com/search?q={quote_plus(search_query2)}"
+            if search_results and 'items' in search_results:
+                # Extract domains from the search results
+                for item in search_results['items'][:3]:  # Check top 3 results
+                    url = item.get('link')
+                    if url:
+                        parsed_url = urlparse(url)
+                        if parsed_url.netloc and '.' in parsed_url.netloc:
+                            domain = parsed_url.netloc
+                            if domain.startswith('www.'):
+                                domain = domain[4:]
+                            return domain
             
-            if self._safe_selenium_get(search_url2):
-                # Wait for search results
-                try:
-                    # Wait for the search results to load
-                    WebDriverWait(self.driver, 10).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, "div.g"))
-                    )
-                    
-                    # Get the page source after everything is loaded
-                    page_source = self.driver.page_source
-                    
-                    # Parse the HTML
-                    soup = BeautifulSoup(page_source, 'html.parser')
-                    
-                    # Get all search result snippets
-                    snippets = []
-                    
-                    # Try different CSS selectors that Google might use
-                    for selector in ['div.VwiC3b', 'div.aCOpRe', 'span.aCOpRe', 'div.s3v9rd', 'div.Z26q7c']:
-                        elements = soup.select(selector)
-                        for element in elements:
-                            if element.text and len(element.text.strip()) > 20:  # Ignore very short snippets
-                                snippets.append(element.text.lower())
-                    
-                    # Look for patterns in snippets
-                    for snippet in snippets:
-                        for format_name, patterns in self.config["email_formats"].items():
-                            for pattern in patterns:
-                                if pattern in snippet:
-                                    print(f"{Fore.GREEN}[+] Found email format from second search: {format_name}{Style.RESET_ALL}")
-                                    return format_name
-                except Exception as e:
-                    print(f"{Fore.YELLOW}[!] Error parsing second search results: {str(e)}{Style.RESET_ALL}")
-            
-            # Since we couldn't find a specific format through searches,
-            # try multiple common formats for all companies
-            # This approach is more generic and avoids hardcoding company-specific logic
-            common_formats_to_try = [
-                'firstinitiallastname@',  # jsmith@company.com
-                'firstname.lastname@',    # john.smith@company.com
-                'firstname@',             # john@company.com
-                'firstnamelastname@',     # johnsmith@company.com
-                'firstname_lastname@'     # john_smith@company.com
-            ]
-            
-            # Return a list of formats to try instead of just one
-            print(f"{Fore.GREEN}[+] Using multiple common email formats for all searches{Style.RESET_ALL}")
-            return common_formats_to_try
-            
-            # We won't reach this code since we're now always returning multiple formats
-            # but keeping it as a fallback just in case
-            default_format = self.config["default_email_format"]
-            print(f"{Fore.YELLOW}[!] No specific email format found, using default format: {default_format}{Style.RESET_ALL}")
-            return default_format
+            # If no domain found, return a default based on company name
+            return f"{clean_company.replace(' ', '')}.com"
             
         except Exception as e:
             print(f"{Fore.RED}[!] Error finding company domain: {str(e)}{Style.RESET_ALL}")
-            # Return the default format from config
-            return self.config["default_email_format"]
-            
+            return f"{company_name.lower().replace(' ', '')}.com"
+    
     def find_email_format(self, company_domain: str) -> Optional[str]:
-        """Find the email format used by a company through Google search using Selenium
+        """Find the email format used by a company through Google Custom Search API
         
         Args:
             company_domain: Domain of the company
@@ -457,80 +307,63 @@ class EmailFinder:
             common_formats = self.config["email_formats"]
             
             # Use a more specific search query that's likely to find email format results
-            search_query = f"{company_name} email format leadiq"
-            search_url = f"https://www.google.com/search?q={quote_plus(search_query)}"
+            search_query = f"{company_name} email format pattern typically follows"
             
-            if self._safe_selenium_get(search_url):
-                # Wait for search results
-                try:
-                    # Wait for the search results to load
-                    WebDriverWait(self.driver, 10).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, "div.g"))
-                    )
-                    
-                    # Get the page source after everything is loaded
-                    page_source = self.driver.page_source
-                    
-                    # Parse the HTML
-                    soup = BeautifulSoup(page_source, 'html.parser')
-                    
-                    # Get all search result snippets
-                    snippets = []
-                    
-                    # Try different CSS selectors that Google might use
-                    for selector in ['div.VwiC3b', 'div.aCOpRe', 'span.aCOpRe', 'div.s3v9rd', 'div.Z26q7c']:
-                        elements = soup.select(selector)
-                        for element in elements:
-                            if element.text and len(element.text.strip()) > 20:  # Ignore very short snippets
-                                snippets.append(element.text.lower())
-                    
-                    # Look for patterns in snippets
-                    for snippet in snippets:
+            # Try the API search first
+            search_results = self._google_custom_search(search_query)
+            
+            if search_results and 'items' in search_results:
+                # Extract snippets from the search results
+                snippets = []
+                
+                for item in search_results['items']:
+                    # Get the snippet
+                    snippet = item.get('snippet', '')
+                    if snippet and len(snippet.strip()) > 20:  # Ignore very short snippets
+                        snippets.append(snippet.lower())
+                        print(f"[+] Found snippet: {snippet[:100]}...")
+                
+                # Look for patterns in snippets
+                for snippet in snippets:
+                    # Check for the typical format description
+                    if "email format" in snippet or "email pattern" in snippet:
+                        # Try to extract the pattern from the snippet
                         for format_name, patterns in common_formats.items():
                             for pattern in patterns:
                                 if pattern in snippet:
                                     print(f"{Fore.GREEN}[+] Found email format: {format_name}{Style.RESET_ALL}")
                                     return format_name
-                except Exception as e:
-                    print(f"{Fore.YELLOW}[!] Error parsing search results: {str(e)}{Style.RESET_ALL}")
+                        
+                        # If we found the typical phrase but couldn't identify the pattern,
+                        # check for percentage mentions which often indicate the format
+                        if "%" in snippet:
+                            for format_name, patterns in common_formats.items():
+                                for pattern in patterns:
+                                    if pattern in snippet and re.search(r'\d{2}%', snippet):
+                                        print(f"{Fore.GREEN}[+] Found email format with percentage: {format_name}{Style.RESET_ALL}")
+                                        return format_name
             
             # Try a second search with a different query
             search_query2 = f"{company_name} company email format"
-            search_url2 = f"https://www.google.com/search?q={quote_plus(search_query2)}"
+            search_results2 = self._google_custom_search(search_query2)
             
-            if self._safe_selenium_get(search_url2):
-                # Wait for search results
-                try:
-                    # Wait for the search results to load
-                    WebDriverWait(self.driver, 10).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, "div.g"))
-                    )
-                    
-                    # Get the page source after everything is loaded
-                    page_source = self.driver.page_source
-                    
-                    # Parse the HTML
-                    soup = BeautifulSoup(page_source, 'html.parser')
-                    
-                    # Get all search result snippets
-                    snippets = []
-                    
-                    # Try different CSS selectors that Google might use
-                    for selector in ['div.VwiC3b', 'div.aCOpRe', 'span.aCOpRe', 'div.s3v9rd', 'div.Z26q7c']:
-                        elements = soup.select(selector)
-                        for element in elements:
-                            if element.text and len(element.text.strip()) > 20:  # Ignore very short snippets
-                                snippets.append(element.text.lower())
-                    
-                    # Look for patterns in snippets
-                    for snippet in snippets:
-                        for format_name, patterns in common_formats.items():
-                            for pattern in patterns:
-                                if pattern in snippet:
-                                    print(f"{Fore.GREEN}[+] Found email format from second search: {format_name}{Style.RESET_ALL}")
-                                    return format_name
-                except Exception as e:
-                    print(f"{Fore.YELLOW}[!] Error parsing second search results: {str(e)}{Style.RESET_ALL}")
+            if search_results2 and 'items' in search_results2:
+                # Extract snippets from the search results
+                snippets = []
+                
+                for item in search_results2['items']:
+                    # Get the snippet
+                    snippet = item.get('snippet', '')
+                    if snippet and len(snippet.strip()) > 20:  # Ignore very short snippets
+                        snippets.append(snippet.lower())
+                
+                # Look for patterns in snippets
+                for snippet in snippets:
+                    for format_name, patterns in common_formats.items():
+                        for pattern in patterns:
+                            if pattern in snippet:
+                                print(f"{Fore.GREEN}[+] Found email format from second search: {format_name}{Style.RESET_ALL}")
+                                return format_name
             
             # Since we couldn't find a specific format through searches,
             # try multiple common formats for all companies
@@ -557,7 +390,7 @@ class EmailFinder:
             print(f"{Fore.RED}[!] Error finding email format: {str(e)}{Style.RESET_ALL}")
             # Return the default format from config
             return self.config["default_email_format"]
-            
+    
     def generate_email_patterns(self, profile_info: Dict[str, Any], domains: List[str] = None) -> List[str]:
         """Generate possible email patterns based on profile information
         
@@ -842,9 +675,20 @@ def main():
     parser.add_argument('--domains', nargs='+', help='Additional domains to check')
     parser.add_argument('--no-headless', action='store_true', help='Run browser in visible mode')
     parser.add_argument('--config', help='Path to configuration file (JSON)')
+    parser.add_argument('--api-key', help='Google Custom Search API key (overrides env variable)')
+    parser.add_argument('--search-engine-id', help='Google Custom Search Engine ID (overrides env variable)')
     args = parser.parse_args()
     
-    finder = EmailFinder(headless=not args.no_headless, config_path=args.config)
+    # If API key is provided as command line argument, use it
+    api_key = args.api_key or os.getenv("GOOGLE_API_KEY", "AIzaSyCrHZyNJKLY62UW7ZUY6X4acgSVxCWFAes")
+    search_engine_id = args.search_engine_id or os.getenv("GOOGLE_SEARCH_ENGINE_ID", "")
+    
+    finder = EmailFinder(
+        headless=not args.no_headless, 
+        config_path=args.config,
+        api_key=api_key,
+        search_engine_id=search_engine_id
+    )
     
     try:
         emails = finder.find_emails(args.first_name, args.last_name, args.company, args.domains)
