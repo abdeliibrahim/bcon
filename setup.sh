@@ -1,7 +1,7 @@
 #!/bin/bash
-# Setup script for Email Finder
+# Setup script for Business Contact & Outreach Network (BCON)
 
-echo "Setting up Email Finder..."
+echo "Setting up Business Contact & Outreach Network (BCON)..."
 
 # Create virtual environment
 echo "Creating virtual environment..."
@@ -14,4 +14,4 @@ pip install -r requirements.txt
 
 echo "Setup complete! You can now run the application."
 echo "To start the web interface, run: python app.py"
-echo "To use the command-line interface, run: python linkedin_email_finder.py <linkedin_url>"
+echo "To use the command-line interface, run: python email_finder.py <first_name> <last_name> <company>"

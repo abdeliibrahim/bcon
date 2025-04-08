@@ -50,7 +50,7 @@ def index():
             
             if not profile_info:
                 flash('Could not process profile information. Please check the inputs and try again.', 'danger')
-                return render_template('index.html', form=form)
+                return render_template('index.html', form=form, theme='dark')
             
             # Find emails
             results = finder.find_emails(first_name, last_name, company, additional_domains)
@@ -60,7 +60,7 @@ def index():
         finally:
             finder.cleanup()
     
-    return render_template('index.html', form=form, results=results, profile_info=profile_info)
+    return render_template('index.html', form=form, results=results, profile_info=profile_info, theme='dark')
 
 @app.route('/api/find-emails', methods=['POST'])
 def api_find_emails():

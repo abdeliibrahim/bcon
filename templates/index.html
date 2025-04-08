@@ -3,169 +3,153 @@
 {% block title %}Email Finder - Home{% endblock %}
 
 {% block content %}
-<div class="hero-section text-center p-4 mb-4">
-    <div class="container">
-        <h1 class="hero-title">Email Finder</h1>
-        <p class="hero-subtitle">Find work emails using name and company information - Your free RocketReach alternative</p>
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title text-danger"><i class="bi bi-search"></i> Find Emails by Name and Company</h2>
     </div>
-</div>
-
-<div class="row justify-content-center">
-    <div class="col-md-10">
-        <div class="card mb-4">
-            <div class="card-header">
-                <h2 class="card-title mb-0"><i class="bi bi-search"></i> Find Emails by Name and Company</h2>
-            </div>
-            <div class="card-body">
-                <p class="lead">Enter a person's name and company to find potential email addresses.</p>
-                
-                <form method="POST" class="form-container">
-                    {{ form.csrf_token }}
-                    
-                    <div class="mb-3">
-                        {{ form.first_name.label(class="form-label") }}
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="bi bi-person"></i></span>
-                            {{ form.first_name(class="form-control", placeholder="John") }}
-                        </div>
-                        {% if form.first_name.errors %}
-                            <div class="text-danger">
-                                {% for error in form.first_name.errors %}
-                                    <small>{{ error }}</small>
-                                {% endfor %}
-                            </div>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="mb-3">
-                        {{ form.last_name.label(class="form-label") }}
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="bi bi-person"></i></span>
-                            {{ form.last_name(class="form-control", placeholder="Doe") }}
-                        </div>
-                        {% if form.last_name.errors %}
-                            <div class="text-danger">
-                                {% for error in form.last_name.errors %}
-                                    <small>{{ error }}</small>
-                                {% endfor %}
-                            </div>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="mb-3">
-                        {{ form.company.label(class="form-label") }}
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="bi bi-building"></i></span>
-                            {{ form.company(class="form-control", placeholder="XCompany") }}
-                        </div>
-                        {% if form.company.errors %}
-                            <div class="text-danger">
-                                {% for error in form.company.errors %}
-                                    <small>{{ error }}</small>
-                                {% endfor %}
-                            </div>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="mb-3">
-                        {{ form.additional_domains.label(class="form-label") }}
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="bi bi-globe"></i></span>
-                            {{ form.additional_domains(class="form-control", placeholder="otherdomain.com, gmail.com") }}
-                        </div>
-                        <small class="form-text text-muted">Optional: Add comma-separated domains to check</small>
-                    </div>
-                    
-                    <div class="mb-3 form-check">
-                        {{ form.headless(class="form-check-input") }}
-                        {{ form.headless.label(class="form-check-label") }}
-                        <small class="form-text text-muted d-block">Run browser in background (recommended)</small>
-                    </div>
-                    
-                    <div class="d-grid">
-                        {{ form.submit(class="btn btn-primary btn-lg") }}
-                    </div>
-                </form>
-            </div>
-        </div>
-        
-        {% if profile_info %}
-        <div class="card mb-4 profile-card">
-            <div class="card-header">
-                <h3 class="card-title mb-0"><i class="bi bi-person-circle"></i> Profile Information</h3>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-12">
-                        <h4>{{ profile_info.get('name', 'Unknown') }}</h4>
-                        
-                        <div class="row mt-3">
-                            <div class="col-md-6">
-                                <p><strong><i class="bi bi-building"></i> Company:</strong> {{ profile_info.get('company', 'Unknown') }}</p>
-                            </div>
-                            <div class="col-md-6">
-                                <p><strong><i class="bi bi-globe"></i> Company Domain:</strong> {{ profile_info.get('company_domain', 'Unknown') }}</p>
-                            </div>
-                        </div>
-                    </div>
+    <div class="card-body">
+        <form method="POST" class="form-container">
+            {{ form.csrf_token }}
+            
+            <div class="mb-3">
+                {{ form.first_name.label(class="form-label text-light") }}
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-person"></i></span>
+                    {{ form.first_name(class="form-control", placeholder="John") }}
                 </div>
-            </div>
-        </div>
-        {% endif %}
-        
-        {% if results %}
-        <div class="card">
-            <div class="card-header">
-                <h3 class="card-title mb-0"><i class="bi bi-envelope"></i> Potential Email Addresses</h3>
-            </div>
-            <div class="card-body">
-                {% if results|length > 0 %}
-                    <div class="row">
-                        {% for email_info in results %}
-                            <div class="col-md-6 mb-3">
-                                <div class="card email-card h-100">
-                                    <div class="card-body">
-                                        <div class="d-flex justify-content-between align-items-center">
-                                            <h5 class="card-title">{{ email_info.email }}</h5>
-                                            <button class="btn btn-sm btn-outline-primary copy-email" data-email="{{ email_info.email }}">
-                                                <i class="bi bi-clipboard"></i> Copy
-                                            </button>
-                                        </div>
-                                        <p class="card-text">
-                                            <span class="badge {% if email_info.confidence == 'High' %}bg-success{% elif email_info.confidence == 'Medium' %}bg-warning{% else %}bg-danger{% endif %} confidence-badge">
-                                                <i class="bi {% if email_info.confidence == 'High' %}bi-check-circle{% elif email_info.confidence == 'Medium' %}bi-exclamation-triangle{% else %}bi-x-circle{% endif %}"></i>
-                                                {{ email_info.confidence }} Confidence
-                                            </span>
-                                        </p>
-                                        <p class="card-text"><small class="text-muted"><i class="bi bi-info-circle"></i> Source: {{ email_info.source }}</small></p>
-                                    </div>
-                                </div>
-                            </div>
+                {% if form.first_name.errors %}
+                    <div class="text-danger">
+                        {% for error in form.first_name.errors %}
+                            <small>{{ error }}</small>
                         {% endfor %}
-                    </div>
-                {% else %}
-                    <div class="alert alert-warning">
-                        <i class="bi bi-exclamation-triangle"></i> No email addresses found. Try adding more domains or check the profile information.
                     </div>
                 {% endif %}
             </div>
+            
+            <div class="mb-3">
+                {{ form.last_name.label(class="form-label text-light") }}
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-person"></i></span>
+                    {{ form.last_name(class="form-control", placeholder="Doe") }}
+                </div>
+                {% if form.last_name.errors %}
+                    <div class="text-danger">
+                        {% for error in form.last_name.errors %}
+                            <small>{{ error }}</small>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+            
+            <div class="mb-3">
+                {{ form.company.label(class="form-label text-light") }}
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-building"></i></span>
+                    {{ form.company(class="form-control", placeholder="XCompany") }}
+                </div>
+                {% if form.company.errors %}
+                    <div class="text-danger">
+                        {% for error in form.company.errors %}
+                            <small>{{ error }}</small>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+            
+            <div class="mb-3">
+                {{ form.additional_domains.label(class="form-label text-light") }}
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-globe"></i></span>
+                    {{ form.additional_domains(class="form-control", placeholder="otherdomain.com, gmail.com") }}
+                </div>
+                <small class="form-text text-muted">Optional: Add comma-separated domains to check</small>
+            </div>
+            
+            <div class="mb-3 form-check">
+                {{ form.headless(class="form-check-input") }}
+                {{ form.headless.label(class="form-check-label text-light") }}
+                <small class="form-text text-muted d-block">Run browser in background (recommended)</small>
+            </div>
+            
+            <div class="d-grid">
+                {{ form.submit(class="btn btn-danger btn-lg") }}
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if profile_info %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title text-danger"><i class="bi bi-person-circle"></i> Profile Information</h3>
+    </div>
+    <div class="card-body">
+        <h4>{{ profile_info.get('name', 'Unknown') }}</h4>
+        <div class="row mt-3">
+            <div class="col-md-6">
+                <p><strong><i class="bi bi-building"></i> Company:</strong> {{ profile_info.get('company', 'Unknown') }}</p>
+            </div>
+            <div class="col-md-6">
+                <p><strong><i class="bi bi-globe"></i> Company Domain:</strong> {{ profile_info.get('company_domain', 'Unknown') }}</p>
+            </div>
         </div>
+    </div>
+</div>
+{% endif %}
+
+{% if results %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title text-danger"><i class="bi bi-envelope"></i> Potential Email Addresses</h3>
+    </div>
+    <div class="card-body">
+        {% if results|length > 0 %}
+            <div class="row">
+                {% for email_info in results %}
+                    <div class="col-md-6 mb-3">
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h5 class="text-danger mb-0">{{ email_info.email }}</h5>
+                                    <button class="btn btn-sm btn-outline-secondary copy-email" data-email="{{ email_info.email }}">
+                                        <i class="bi bi-clipboard"></i> Copy
+                                    </button>
+                                </div>
+                                <div>
+                                    <span class="badge {% if email_info.confidence == 'High' %}bg-success{% elif email_info.confidence == 'Medium' %}bg-warning text-dark{% else %}bg-danger{% endif %} confidence-badge">
+                                        <i class="bi {% if email_info.confidence == 'High' %}bi-check-circle{% elif email_info.confidence == 'Medium' %}bi-exclamation-triangle{% else %}bi-x-circle{% endif %}"></i>
+                                        {{ email_info.confidence }} Confidence
+                                    </span>
+                                    <small class="text-muted ms-2">Source: {{ email_info.source }}</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="alert alert-warning">
+                <i class="bi bi-exclamation-triangle"></i> No email addresses found. Try adding more domains or check the profile information.
+            </div>
         {% endif %}
     </div>
 </div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
-    // Add any client-side scripts here
     document.addEventListener('DOMContentLoaded', function() {
-        // Example: Copy email to clipboard functionality could be added here
         const copyEmailButtons = document.querySelectorAll('.copy-email');
         copyEmailButtons.forEach(button => {
             button.addEventListener('click', function() {
                 const email = button.getAttribute('data-email');
                 navigator.clipboard.writeText(email).then(function() {
-                    console.log('Email copied to clipboard');
+                    const originalText = button.innerHTML;
+                    button.innerHTML = '<i class="bi bi-check"></i> Copied!';
+                    setTimeout(() => {
+                        button.innerHTML = originalText;
+                    }, 2000);
                 }, function(err) {
                     console.error('Could not copy email: ', err);
                 });

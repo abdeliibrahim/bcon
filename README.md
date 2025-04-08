@@ -1,6 +1,6 @@
-# Email Finder
+# Business Contact & Outreach Network (BCON)
 
-A tool to find work emails using first name, last name, and company information, similar to RocketReach but free and self-hosted.
+A tool to find and manage business contacts using first name, last name, and company information, similar to RocketReach but free and self-hosted.
 
 ## Features
 
@@ -17,7 +17,7 @@ A tool to find work emails using first name, last name, and company information,
 1. Clone this repository:
 ```bash
 git clone <repository-url>
-cd email-finder
+cd bcon
 ```
 
 2. Install the required dependencies:
@@ -26,6 +26,12 @@ pip install -r requirements.txt
 ```
 
 3. Make sure you have Chrome installed (required for Selenium).
+
+4. Run the setup script:
+```bash
+chmod +x setup.sh
+./setup.sh
+```
 
 ## Usage
 
