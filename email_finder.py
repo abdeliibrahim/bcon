@@ -307,7 +307,7 @@ class EmailFinder:
             common_formats = self.config["email_formats"]
             
             # Use a more specific search query that's likely to find email format results
-            search_query = f"{company_name} email format pattern typically follows"
+            search_query = f"{company_name} email format pattern leadiq"
             
             # Try the API search first
             search_results = self._google_custom_search(search_query)
@@ -680,7 +680,7 @@ def main():
     args = parser.parse_args()
     
     # If API key is provided as command line argument, use it
-    api_key = args.api_key or os.getenv("GOOGLE_API_KEY", "AIzaSyCrHZyNJKLY62UW7ZUY6X4acgSVxCWFAes")
+    api_key = args.api_key or os.getenv("GOOGLE_API_KEY", "")
     search_engine_id = args.search_engine_id or os.getenv("GOOGLE_SEARCH_ENGINE_ID", "")
     
     finder = EmailFinder(
